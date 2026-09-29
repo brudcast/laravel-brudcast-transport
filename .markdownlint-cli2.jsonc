@@ -1,0 +1,7 @@
+{
+  "config": {
+    "MD033": { "allowed_elements": ["p", "img"] }
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["vendor", "CHANGELOG.md"]
+}

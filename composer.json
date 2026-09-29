@@ -1,0 +1,70 @@
+{
+    "name": "brudcast/laravel-brudcast-transport",
+    "description": "Laravel mail transport for the Brudcast mailing service",
+    "keywords": [
+        "brudcast",
+        "email",
+        "laravel",
+        "mail",
+        "transport"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Brudcast Limited"
+        }
+    ],
+    "homepage": "https://github.com/brudcast/laravel-brudcast-transport",
+    "support": {
+        "issues": "https://github.com/brudcast/laravel-brudcast-transport/issues",
+        "source": "https://github.com/brudcast/laravel-brudcast-transport"
+    },
+    "require": {
+        "php": "^8.2",
+        "composer-runtime-api": "^2.2",
+        "guzzlehttp/guzzle": "^7.8 || ^8.0",
+        "illuminate/console": "^12.0 || ^13.0",
+        "illuminate/contracts": "^12.0 || ^13.0",
+        "illuminate/mail": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0",
+        "psr/event-dispatcher": "^1.0",
+        "psr/log": "^1.0 || ^2.0 || ^3.0",
+        "symfony/mailer": "^7.2 || ^8.0",
+        "symfony/mime": "^7.2 || ^8.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "phpunit/phpunit": "^11.5 || ^12.0 || ^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Brudcast\\LaravelTransport\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Brudcast\\LaravelTransport\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Brudcast\\LaravelTransport\\BrudcastTransportServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:coverage": "phpunit --coverage-clover coverage/clover.xml --coverage-text",
+        "lint": "pint --test",
+        "format": "pint",
+        "analyse": "phpstan analyse"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
