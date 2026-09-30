@@ -1,0 +1,26 @@
+name: Bug report
+description: Something is not working as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, what happened instead, and any error output.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The mailer config and the smallest `Mail` call that show the problem. Never paste a real sending key.
+      render: php
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: laravel-brudcast-transport 1.0.0, Laravel 12.x, PHP 8.4
+    validations:
+      required: true
