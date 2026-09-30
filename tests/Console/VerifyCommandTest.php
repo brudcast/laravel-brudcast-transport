@@ -25,11 +25,20 @@ final class VerifyCommandTest extends TestCase
 
     public function test_succeeds_when_the_key_is_accepted(): void
     {
-        $this->responses->append(new Response(422, [], '{"status":false,"message":"Validation failed"}'));
+        $this->responses->append(new Response(422, [], '{"status":false,"message":"Validation failed","errors":[]}'));
 
         $this->verify()
             ->expectsOutputToContain("Brudcast accepted the [brudcast] mailer's credentials.")
             ->assertSuccessful();
+    }
+
+    public function test_fails_when_a_422_is_not_the_services_validation_response(): void
+    {
+        $this->responses->append(new Response(422, [], '<html>Unprocessable</html>'));
+
+        $this->verify()
+            ->expectsOutputToContain('The [brudcast] mailer could not be verified')
+            ->assertFailed();
     }
 
     public function test_fails_when_the_key_is_rejected(): void

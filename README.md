@@ -21,7 +21,7 @@ application to Brudcast only requires a configuration change.
 - Delivers over HTTPS, with no SMTP connection required
 - Includes `php artisan brudcast:verify` to check credentials without sending
   an email
-- Supports PHP 8.2+ and Laravel 12+
+- Supports PHP 8.2+ with Laravel 12 or 13
 
 ## Table of Contents
 
@@ -38,6 +38,7 @@ application to Brudcast only requires a configuration change.
   - [Error handling](#error-handling)
   - [Verifying credentials](#verifying-credentials)
 - [Sending over SMTP](#sending-over-smtp)
+- [Compatibility](#compatibility)
 - [Testing](#testing)
 - [Changelog](#changelog)
 - [Contributing](#contributing)
@@ -49,7 +50,7 @@ application to Brudcast only requires a configuration change.
 ## Requirements
 
 - PHP 8.2 or later
-- Laravel 12 or later
+- Laravel 12 or 13
 
 Laravel 13 requires PHP 8.3 or later.
 
@@ -98,14 +99,31 @@ a secrets manager.
 | `key`      | `string` | None      | Brudcast sending key (required)        |
 | `endpoint` | `string` | See below | Base URL of the mailing service        |
 | `insecure` | `bool`   | `false`   | Allow `http://` endpoints              |
-| `timeout`  | `int`    | `30`      | Request timeout in seconds             |
+| `timeout`  | `float`  | `30`      | Request timeout in seconds             |
 | `guzzle`   | `array`  | `[]`      | Extra [Guzzle request options][guzzle] |
 
-If the mailer does not define `key` or `endpoint`, the transport falls back to
-`services.brudcast.key` and `services.brudcast.endpoint` respectively.
+If the mailer's `key` is missing, blank or not a string, the transport falls
+back to `services.brudcast.key`. Leading and trailing spaces, tabs and line
+breaks are removed from the key. The key must then contain only visible ASCII
+characters (`!` to `~`); a key with any other character, such as an inner space,
+line break or non-ASCII character, throws an `InvalidArgumentException` when the
+mailer is created. The key itself never appears in an error message. If the
+mailer does not define `endpoint`, the transport falls back to
+`services.brudcast.endpoint`.
+
+`insecure` is enabled by `true`, `1`, or one of the strings `"1"`, `"true"`,
+`"on"` or `"yes"` in any case, so it can be read from an environment variable.
+
+`timeout` accepts a number, or a string of digits with an optional decimal
+part, such as `"5"` or `"2.5"`, optionally surrounded by ASCII whitespace. It
+must be from `0.001` (one millisecond) to `2147483.647` seconds. Any other
+value, including `0`, a value out of that range, or a string such as `"1e3"`,
+`".5"` or `"+5"`, throws an `InvalidArgumentException` when the mailer is
+created, rather than failing when mail is sent.
 
 Connecting to the service times out after 10 seconds. Set `connect_timeout`
-under `guzzle` to change it.
+under `guzzle` to change it. Options under `guzzle` take precedence over
+`timeout`.
 
 ### Endpoint
 
@@ -118,9 +136,21 @@ is kept. A query string or fragment is dropped.
 > The option is named `endpoint` rather than `url` because Laravel treats a
 > mailer's `url` value as a connection string and replaces its transport.
 
-Because the sending key is sent in the `Authorization` header, the endpoint
-must use HTTPS. An `http://` endpoint throws an `InvalidArgumentException` when
-the mailer is created, unless the mailer sets `insecure` to `true`.
+The endpoint is checked when the mailer is created, and an
+`InvalidArgumentException` is thrown if it:
+
+- is not an absolute URL with a host that starts with a scheme and `://`, or
+  contains whitespace, a control character or a backslash
+- includes a username or password; the sending key is the only credential
+- does not use HTTPS
+
+An error message that shows the endpoint replaces any username and password
+with `***` and leaves out the query string and fragment, so it does not reveal
+a secret.
+
+Because the sending key is sent in the `Authorization` header, an `http://`
+endpoint is only allowed when the mailer sets `insecure` to `true`. An empty or
+`null` endpoint uses the default.
 
 > [!WARNING]
 > `insecure` sends the sending key unencrypted. Never enable it in production.
@@ -188,8 +218,9 @@ can send from any of the organization's verified domains.
 | Text and HTML views            | Yes       | At least one is required     |
 | Attachments                    | Yes       | Base64 encoded               |
 | Custom headers                 | Yes       | Sent as string headers       |
+| `In-Reply-To`, `References`    | Yes       | Sent as string headers       |
 | `tag()`, `metadata()`          | Yes       | Sent as string headers       |
-| `priority()`                   | Yes       | Sent as `X-Priority`         |
+| `priority()`                   | Yes       | Sent as `X-Priority` only    |
 | `Message-ID`, `Date`           | No        | Set by Brudcast              |
 | `Sender`                       | No        | Set for several `from`       |
 | `Return-Path`                  | No        | Set by Brudcast for bounces  |
@@ -200,11 +231,20 @@ requires. All of them must be on the same domain, since that is the domain the
 sending key is checked against and the message is DKIM signed for; otherwise
 the request fails with a `400`.
 
-The `to` recipients are taken from the Symfony envelope, consistent with
-Symfony's own API transports: every envelope recipient that is not a Cc or Bcc
-address. For standard Laravel mail, this is the `To` header. A custom envelope,
-such as one set by Symfony's `EnvelopeListener`, only affects the `to`
-recipients; Cc and Bcc addresses are always taken from the message itself.
+The recipients are taken from the Symfony envelope, consistent with Symfony's
+own API transports. `to` lists, in envelope order, every envelope recipient in
+the `To` header (named as it is there) and every envelope recipient in none of
+the `To`, `Cc` or `Bcc` headers. A recipient in `To` and also in `Cc` or `Bcc`
+stays in `to`. `cc` and `bcc` are the `Cc` and `Bcc` addresses that are envelope
+recipients. For standard Laravel mail, the envelope holds every address in the
+headers, so they are sent as they are. A custom envelope, such as one set by
+Symfony's `EnvelopeListener`, can add or remove recipients.
+
+Each of `to`, `cc` and `bcc` lists an address once, compared without regard to
+case (including non-ASCII characters); the first occurrence is kept. Addresses
+on an international domain are sent with the domain in its ASCII (punycode)
+form, as Symfony's SMTP transport sends them. An address whose domain cannot be
+converted is sent as it is, and Brudcast decides whether it is valid.
 
 The envelope sender is not sent, since Brudcast sets the Return-Path for bounce
 handling. Every message requires at least one `to` recipient, so messages with
@@ -212,17 +252,41 @@ only Bcc recipients fail validation.
 
 Blade and Markdown mail are rendered by Laravel before reaching the transport.
 Images added with `$message->embed()` are sent with the content ID referenced
-by the HTML, so they display inline. A reference Brudcast cannot use as a
-content ID, one containing whitespace or angle brackets or longer than 255
-characters, is sent as a regular attachment instead.
+by the HTML, in an `<img src>` or a `background` attribute, so they display
+inline. A reference Brudcast cannot use as a content ID, one containing
+whitespace or angle brackets or longer than 255 characters (counted in UTF-16
+code units), is sent as a regular attachment instead. A reference is only found
+when at most 4000 characters of other attributes come before it in its tag.
+
+An attachment without a filename is named after its position and content type,
+such as `attachment-1.png` (`.bin` when the type is unknown). The extension
+comes from Symfony's MIME types, so it can differ from the one Nodemailer picks,
+such as `.jpg` rather than `.jpeg` for `image/jpeg`. One added without
+a content type is sent with the type its filename's extension suggests, such as
+`application/pdf` for `report.pdf`. An empty attachment throws a
+`TransportException` before the request is sent.
+
+Custom headers, including `In-Reply-To` and `References`, are forwarded as
+string headers. These headers are reserved and never forwarded, since Brudcast
+sets them itself or reads them from the message fields: `Bcc`, `Cc`,
+`Content-Transfer-Encoding`, `Content-Type`, `Date`, `From`, `Message-ID`,
+`MIME-Version`, `Reply-To`, `Return-Path`, `Sender`, `Subject`, `To` and
+`X-Brudcast-Job-Id`. `priority()` sets only the `X-Priority` header, which is
+forwarded as it is.
 
 Repeated headers, such as the `X-Tag` header added for each `tag()`, are
-combined into a single comma-separated value. Line breaks in header values are
-replaced with spaces. A header name that is not valid under RFC 5322 (printable
-ASCII without a colon) throws a `TransportException` before the request is
-sent. Brudcast accepts header names of up to 78 characters and values of up to
-998, so a very long combined value, such as many tags or large metadata, fails
-validation with a `422`.
+combined into a single comma-separated value, under the first one's name; a
+repeated `In-Reply-To` or `References` is joined with a space instead. Line
+breaks in header values are replaced with spaces, and leading and trailing
+spaces and tabs are removed; a header left empty is not sent. Brudcast accepts
+header names of up to 78 characters and values of up to 998, so a very long
+combined value, such as many tags or large metadata, fails validation with a
+`422`.
+
+Symfony rejects most invalid header names with an `RfcComplianceException` when
+the header is added. A name Symfony accepts but Brudcast does not, one that is
+not printable ASCII without a colon as RFC 5322 requires, throws a
+`TransportException` before the request is sent.
 
 Brudcast builds the SMTP envelope, signs the message with the domain's DKIM key
 and assigns the Message-ID.
@@ -264,22 +328,43 @@ try {
     $exception->getStatusCode(); // HTTP status code, e.g. 400, 401, 422, 429
     $exception->getMessage();    // Error message returned by the service
     $exception->getErrors();     // Validation errors for a 422 response
+    $exception->getRetryAfter(); // Seconds from the Retry-After header, or null
     $exception->getResponse();   // Full response body
 }
 ```
 
-| Status | Description                                            |
-| ------ | ------------------------------------------------------ |
-| `400`  | The `from` domain is not registered or not permitted   |
-| `401`  | The sending key is missing, invalid or revoked         |
-| `403`  | Sending is blocked for the domain or organization      |
-| `422`  | The message failed validation; see `getErrors()`       |
-| `429`  | Too many requests; retry with backoff                  |
-| `5xx`  | The service is unavailable; usually safe to retry      |
+| Status | Description                                                 |
+| ------ | ----------------------------------------------------------- |
+| `400`  | The `from` domain is not registered or not permitted        |
+| `401`  | The sending key is missing, invalid or revoked              |
+| `403`  | Sending is blocked for the domain or organization           |
+| `422`  | The message failed validation; see `getErrors()`            |
+| `429`  | Too many requests; back off, see `getRetryAfter()`          |
+| `5xx`  | The service failed; not always safe to retry, see below     |
+
+The message is the service's own when it returns one, and otherwise
+`Brudcast responded with HTTP <status>`. `getErrors()` always returns a list,
+which is empty unless the service returned validation errors.
+
+On a `429`, back off before retrying; a retry that comes too soon is rejected
+again. When the response carries a `Retry-After` header, it is exposed as
+`getRetryAfter()`, the number of seconds to wait, whether the header gives
+seconds (up to 2^53 - 1, as the Nodemailer transport reads them) or an HTTP
+date in any of the three forms HTTP allows; it is `null` when the header is
+missing or cannot be read, including a date that does not exist or names the
+wrong weekday. For queued mail, release the job for at least that long, or give it a
+`backoff` that is.
+
+A `5xx` is not always worth retrying: Brudcast also returns a `500` when the
+request body is not valid JSON or is larger than 10 MB, such as a message with
+large attachments, and retrying sends the same request again.
 
 Network errors and timeouts throw a `TransportException` that wraps the
-underlying Guzzle exception. Queued mail is retried according to the queue's
-`tries` and `backoff` settings.
+underlying Guzzle exception, with a message starting `Could not reach the
+Brudcast mailing service:`. A message that cannot be encoded as JSON, such as
+one with invalid UTF-8 text, throws a `TransportException` before the request
+is sent. Queued mail is retried according to the queue's `tries` and `backoff`
+settings.
 
 A `5xx` or a timeout does not always mean the message was not queued: a proxy
 in front of Brudcast can time out after the service has accepted it. Retrying
@@ -299,6 +384,12 @@ The command confirms that the service is reachable and that the sending key is
 accepted, without sending an email. It exits with a non-zero status code on
 failure, so it can be used as part of a deployment check.
 
+It sends an empty message, which Brudcast only validates, and so rejects with a
+`422`, once it has accepted the key. Only that validation response counts as
+success; any other response, including a `422` from a proxy, fails. The sending
+domain is not checked, so a domain that is not registered (`400`) or is blocked
+(`403`) is only reported when mail is sent.
+
 ## Sending over SMTP
 
 This package only supports the HTTP API. To send using Brudcast SMTP
@@ -308,7 +399,7 @@ credentials instead, use Laravel's built-in `smtp` mailer:
 'smtp' => [
     'transport' => 'smtp',
     'scheme' => env('MAIL_SCHEME', 'smtp'),
-    'host' => env('MAIL_HOST', 'out-smtp.brudcast.com'),
+    'host' => env('MAIL_HOST', 'smtp.brudcast.com'),
     'port' => env('MAIL_PORT', 587),
     'username' => env('MAIL_USERNAME'),
     'password' => env('MAIL_PASSWORD'),
@@ -322,8 +413,21 @@ TLS only when the server offers it. The option needs `symfony/mailer` 7.3 or
 later; older versions ignore it.
 
 Brudcast supports STARTTLS on ports `587`, `2525` and `25`, and implicit TLS on
-port `465` (set `MAIL_SCHEME=smtps`). SMTP credentials are scoped to a single
-sending domain, so the `from` address must belong to that domain.
+port `465`, which Symfony uses automatically for that port. SMTP credentials are
+scoped to a single sending domain, so the `from` address must belong to that
+domain.
+
+## Compatibility
+
+| Dependency     | Supported                         |
+| -------------- | --------------------------------- |
+| PHP            | 8.2, 8.3, 8.4, 8.5                |
+| Laravel        | 12, 13 (13 requires PHP 8.3+)     |
+| Symfony Mailer | 7.2+ and 8                        |
+| Guzzle         | 7.8+ and 8                        |
+
+CI runs the suite on every supported PHP and Laravel combination, and on the
+lowest supported dependency versions.
 
 ## Testing
 
@@ -343,9 +447,8 @@ composer lint
 
 ## Changelog
 
-Please see [CHANGELOG](CHANGELOG.md) for what has changed in each release. The
-changelog is generated from commit messages, and each version is also published
-on the [releases][releases] page.
+See the [releases][releases] for what has changed in each release. Release
+notes are generated from commit messages.
 
 ## Contributing
 
@@ -365,7 +468,6 @@ the package, PHP and Laravel versions, and never paste a live sending key.
 ## Credits
 
 - [Brudcast Limited][brudcast]
-- Based on [laravel-sendgrid-driver][upstream] by Shingo Ichikawa
 
 ## License
 
@@ -385,4 +487,3 @@ information.
 [issues]: https://github.com/brudcast/laravel-brudcast-transport/issues
 [guzzle]: https://docs.guzzlephp.org/en/stable/request-options.html
 [brudcast]: https://github.com/brudcast
-[upstream]: https://github.com/s-ichikawa/laravel-sendgrid-driver
