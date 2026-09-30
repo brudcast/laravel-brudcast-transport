@@ -352,8 +352,8 @@ again. When the response carries a `Retry-After` header, it is exposed as
 seconds (up to 2^53 - 1, as the Nodemailer transport reads them) or an HTTP
 date in any of the three forms HTTP allows; it is `null` when the header is
 missing or cannot be read, including a date that does not exist or names the
-wrong weekday. For queued mail, release the job for at least that long, or give it a
-`backoff` that is.
+wrong weekday. For queued mail, release the job for at least that long, or
+give it a `backoff` that is.
 
 A `5xx` is not always worth retrying: Brudcast also returns a `500` when the
 request body is not valid JSON or is larger than 10 MB, such as a message with

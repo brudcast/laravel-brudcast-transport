@@ -66,7 +66,11 @@ jobs:
       - uses: ramsey/composer-install@a8d0d959dab41457692a5e2041bd9b757a119e3f # 3.2.1
         with:
           dependency-versions: ${{ matrix.dependencies }}
-      - run: composer show laravel/framework symfony/mailer guzzlehttp/guzzle | grep -E '^(name|versions)'
+      - name: Show the resolved versions
+        run: |
+          for package in laravel/framework symfony/mailer guzzlehttp/guzzle; do
+            composer show "$package" | grep -E '^(name|versions) '
+          done
       - if: ${{ !matrix.coverage }}
         run: vendor/bin/phpunit
       - if: ${{ matrix.coverage }}
