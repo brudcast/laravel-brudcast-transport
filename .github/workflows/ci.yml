@@ -25,11 +25,11 @@ jobs:
           php-version: "8.4"
           coverage: none
       - run: composer validate --strict
-      - uses: ramsey/composer-install@a8d0d959dab41457692a5e2041bd9b757a119e3f # 3.2.1
+      - uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
       - run: composer audit
       - run: vendor/bin/pint --test
       - run: vendor/bin/phpstan analyse --no-progress --error-format=github
-      - uses: DavidAnson/markdownlint-cli2-action@992badcdf24e3b8eb7e87ff9287fe931bcb00c6e # v20.0.0
+      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
 
   test:
     name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}${{ matrix.dependencies == 'lowest' && ' (lowest)' || '' }}
@@ -63,7 +63,7 @@ jobs:
             "illuminate/support:^${{ matrix.laravel }}.0"
           composer require --dev --no-update --no-interaction \
             "orchestra/testbench:^$(( ${{ matrix.laravel }} - 2 )).0"
-      - uses: ramsey/composer-install@a8d0d959dab41457692a5e2041bd9b757a119e3f # 3.2.1
+      - uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
         with:
           dependency-versions: ${{ matrix.dependencies }}
       - name: Show the resolved versions
